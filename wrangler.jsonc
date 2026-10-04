@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
-  "name": "23si-clinic-flow",
+  "name": "proud-firefly-b533",
   "main": "src/index.mjs",
   "compatibility_date": "2026-10-03",
   "assets": {
