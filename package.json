@@ -1,0 +1,7 @@
+{
+  "name": "23si-clinic-flow-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {"deploy": "wrangler deploy", "dev": "wrangler dev"},
+  "devDependencies": {"wrangler": "^4.44.0"}
+}
