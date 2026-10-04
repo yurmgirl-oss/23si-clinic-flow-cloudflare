@@ -12,3 +12,4 @@
 - `server.mjs` : 기존 Express API의 Workers 변환본
 - `public/` : 기존 React/Vite 화면
 - `wrangler.jsonc` : Static Assets 설정
+Cloudflare deployment test
