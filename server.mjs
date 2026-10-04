@@ -1,6 +1,3 @@
-import { createRequire as __bannerCrReq } from 'node:module';
-
-globalThis.require = __bannerCrReq(import.meta.url);
 globalThis.__filename = '/bundle/server.mjs';
 globalThis.__dirname = '/bundle';
 import { httpServerHandler } from "cloudflare:node";
