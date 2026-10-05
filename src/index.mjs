@@ -10,39 +10,56 @@ import * as url from "node:url";
 import * as zlib from "node:zlib";
 import * as os from "node:os";
 import * as fs from "node:fs";
+import * as net from "node:net";
+import * as tls from "node:tls";
+import * as assert from "node:assert";
 import { env } from "cloudflare:workers";
 
-// ESM 모듈을 Object.prototype(hasOwnProperty 포함)을 갖춘 일반 객체 형태로 변환
-function toCJS(mod) {
-  return Object.assign(Object.create(Object.prototype), mod);
+// safer-buffer 등 구형 라이브러리의 hasOwnProperty 호출을 안전하게 통과시키는 Proxy
+function createModuleProxy(mod) {
+  const fallback = Object.create(Object.prototype);
+  return new Proxy(mod || fallback, {
+    get(target, prop) {
+      if (prop === "hasOwnProperty") {
+        return (key) => Object.prototype.hasOwnProperty.call(target, key) || key in target;
+      }
+      return Reflect.get(target, prop);
+    },
+    has(target, prop) {
+      return prop === "hasOwnProperty" || prop in target;
+    },
+  });
 }
 
-// 1. server.mjs 내부에서 require("buffer") 등을 호출할 때 전달할 사전
 const builtins = {
-  path: toCJS(path),
-  util: toCJS(util),
-  buffer: toCJS(buffer),
-  string_decoder: toCJS(string_decoder),
-  events: toCJS(events),
-  stream: toCJS(stream),
-  crypto: toCJS(crypto),
-  http: toCJS(http),
-  url: toCJS(url),
-  zlib: toCJS(zlib),
-  os: toCJS(os),
-  fs: toCJS(fs),
+  path: createModuleProxy(path),
+  util: createModuleProxy(util),
+  buffer: createModuleProxy(buffer),
+  string_decoder: createModuleProxy(string_decoder),
+  events: createModuleProxy(events),
+  stream: createModuleProxy(stream),
+  crypto: createModuleProxy(crypto),
+  http: createModuleProxy(http),
+  url: createModuleProxy(url),
+  zlib: createModuleProxy(zlib),
+  os: createModuleProxy(os),
+  fs: createModuleProxy(fs),
+  net: createModuleProxy(net),
+  tls: createModuleProxy(tls),
+  assert: createModuleProxy(assert),
 };
 
-// 2. require() 호출 시 hasOwnProperty가 보장된 모듈 반환
+// 1. require 호출 시 hasOwnProperty가 보장된 프록시 모듈 반환
 globalThis.require = function (moduleName) {
-  const name = moduleName.replace(/^node:/, "");
+  const name = String(moduleName).replace(/^node:/, "");
   if (builtins[name]) {
     return builtins[name];
   }
-  return Object.create(Object.prototype);
+  return createModuleProxy({});
 };
+globalThis.require.resolve = (name) => name;
 
-// 3. 환경 변수 세팅
+// 2. 환경 변수 세팅
 process.env.PORT = "3000";
 try {
   if (env?.HYPERDRIVE?.connectionString) {
@@ -55,7 +72,7 @@ try {
   // 빌드 단계 예외 방지
 }
 
-// 4. 원본 server.mjs 로드 및 Workers 연결
+// 3. server.mjs 로드 및 Workers fetch 핸들러 연결
 const serverModule = await import("../server.mjs");
 const server = serverModule.default || serverModule;
 
