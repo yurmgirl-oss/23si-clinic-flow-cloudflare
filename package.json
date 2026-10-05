@@ -5,9 +5,5 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"
-  },
-  "dependencies": {
-    "express": "^4.21.0",
-    "cors": "^2.8.5"
   }
 }
