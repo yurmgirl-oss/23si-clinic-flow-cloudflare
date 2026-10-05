@@ -4,30 +4,45 @@ import * as buffer from "node:buffer";
 import * as string_decoder from "node:string_decoder";
 import * as events from "node:events";
 import * as stream from "node:stream";
+import * as crypto from "node:crypto";
+import * as http from "node:http";
+import * as url from "node:url";
+import * as zlib from "node:zlib";
+import * as os from "node:os";
+import * as fs from "node:fs";
 import { env } from "cloudflare:workers";
 
-// 1. server.mjs 내부에서 require("path") 등을 호출할 때 바로 넘겨줄 모듈 사전 정의
+// ESM 모듈을 Object.prototype(hasOwnProperty 포함)을 갖춘 일반 객체 형태로 변환
+function toCJS(mod) {
+  return Object.assign(Object.create(Object.prototype), mod);
+}
+
+// 1. server.mjs 내부에서 require("buffer") 등을 호출할 때 전달할 사전
 const builtins = {
-  path,
-  "node:path": path,
-  util,
-  "node:util": util,
-  buffer,
-  "node:buffer": buffer,
-  string_decoder,
-  "node:string_decoder": string_decoder,
-  events,
-  "node:events": events,
-  stream,
-  "node:stream": stream,
+  path: toCJS(path),
+  util: toCJS(util),
+  buffer: toCJS(buffer),
+  string_decoder: toCJS(string_decoder),
+  events: toCJS(events),
+  stream: toCJS(stream),
+  crypto: toCJS(crypto),
+  http: toCJS(http),
+  url: toCJS(url),
+  zlib: toCJS(zlib),
+  os: toCJS(os),
+  fs: toCJS(fs),
 };
 
-// 2. createRequire 없이 전역 require 함수를 직접 정의하여 에러 원천 차단
+// 2. require() 호출 시 hasOwnProperty가 보장된 모듈 반환
 globalThis.require = function (moduleName) {
-  return builtins[moduleName] || {};
+  const name = moduleName.replace(/^node:/, "");
+  if (builtins[name]) {
+    return builtins[name];
+  }
+  return Object.create(Object.prototype);
 };
 
-// 3. 환경 변수 기본값 주입
+// 3. 환경 변수 세팅
 process.env.PORT = "3000";
 try {
   if (env?.HYPERDRIVE?.connectionString) {
@@ -40,11 +55,10 @@ try {
   // 빌드 단계 예외 방지
 }
 
-// 4. 전역 require가 준비된 상태에서 원본 server.mjs 로드
+// 4. 원본 server.mjs 로드 및 Workers 연결
 const serverModule = await import("../server.mjs");
 const server = serverModule.default || serverModule;
 
-// 5. Cloudflare Workers 진입점 핸들러 연결
 export default {
   async fetch(request, env, ctx) {
     if (env?.HYPERDRIVE?.connectionString) {
