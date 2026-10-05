@@ -1,40 +1,46 @@
 import { createRequire } from "node:module";
+
+// 1. Cloudflare Workers 전역에 require를 주입하여 server.mjs 내부의 path 에러를 방지
 globalThis.require = createRequire(import.meta.url);
 
 import { env } from "cloudflare:workers";
-import { httpServerHandler } from "cloudflare:node";
-import express from "express";
-import cors from "cors";
 
-// Make the existing server-side database configuration available before
-// loading the route tree. The route modules use @workspace/db, which reads
-// DATABASE_URL when it is imported.
-process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
-process.env.COUNTER_PIN = env.COUNTER_PIN ?? "";
+// 2. 기본 포트 및 환경 변수 세팅
 process.env.PORT = "3000";
+try {
+  if (env?.HYPERDRIVE?.connectionString) {
+    process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
+  }
+  if (env?.COUNTER_PIN) {
+    process.env.COUNTER_PIN = env.COUNTER_PIN;
+  }
+} catch (e) {
+  // 빌드 타임 예외 무시
+}
 
-// Import the original route tree directly from source. This avoids the
-// pre-bundled artifacts/api-server/dist/server.mjs that contains esbuild's
-// runtime dynamic-require helper, which is not suitable for Workers.
-const { default: router } = await import("../artifacts/api-server/src/routes/index.ts");
+// 3. 전역 require가 준비된 후 대용량 server.mjs를 안전하게 로드
+const server = await import("../server.mjs");
 
-const app = express();
+// 4. Cloudflare Workers 핸들러 연결
+export default {
+  async fetch(request, env, ctx) {
+    if (env?.HYPERDRIVE?.connectionString) {
+      process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
+    }
+    if (env?.COUNTER_PIN) {
+      process.env.COUNTER_PIN = env.COUNTER_PIN;
+    }
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+    const handler = server.default?.fetch
+      ? server.default.fetch.bind(server.default)
+      : (typeof server.default === "function"
+          ? server.default
+          : (server.fetch ? server.fetch.bind(server) : null));
 
-// Some existing routes expect req.log. Keep that small interface without
-// bringing the Node-only pino/pino-http stack into the Worker bundle.
-app.use((req, _res, next) => {
-  req.log = {
-    error: (...args) => console.error(...args),
-  };
-  next();
-});
+    if (handler) {
+      return handler(request, env, ctx);
+    }
 
-app.use("/api", router);
-
-app.listen(3000);
-
-export default httpServerHandler({ port: 3000 });
+    return new Response("Server handler not found", { status: 500 });
+  }
+};
