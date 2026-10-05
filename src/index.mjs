@@ -8,7 +8,6 @@ import cors from "cors";
 // DATABASE_URL when it is imported.
 process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
 process.env.COUNTER_PIN = env.COUNTER_PIN ?? "";
-process.env.NODE_ENV = "production";
 process.env.PORT = "3000";
 
 // Import the original route tree directly from source. This avoids the
